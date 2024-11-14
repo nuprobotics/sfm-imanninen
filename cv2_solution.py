@@ -82,8 +82,15 @@ def resection(
 
 
 def convert_to_world_frame(translation_vector, rotation_matrix):
-    pass
-    # YOUR CODE HERE
+    translation_vector = translation_vector.reshape(3, 1)
+
+    # Compute the camera position in the world frame (inverse transformation of the translation)
+    camera_position_in_world_frame = -rotation_matrix.T @ translation_vector
+
+    # The camera's rotation matrix in the world frame is simply the transpose of the given rotation matrix
+    camera_rotation_in_world_frame = rotation_matrix.T
+
+    return camera_position_in_world_frame, camera_rotation_in_world_frame
 
 
 def visualisation(
