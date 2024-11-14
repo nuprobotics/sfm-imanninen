@@ -32,7 +32,7 @@ implement k-ratio test and left-right check. k for k-ratio test should be 0.75.
 
 **Autotests specs:**
 + Function should be called `get_matches`
-+ Function should take two images and floating point number as input
++ Function should take two images as input
 + Function should return two sequences with key points and sequence with matches: 
 `typing.Sequence[cv2.KeyPoint], typing.Sequence[cv2.KeyPoint], typing.Sequence[cv2.DMatch]`
 

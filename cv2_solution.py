@@ -18,7 +18,32 @@ def get_matches(image1, image2) -> typing.Tuple[
     bf = cv2.BFMatcher()
     matches_1_to_2: typing.Sequence[typing.Sequence[cv2.DMatch]] = bf.knnMatch(descriptors1, descriptors2, k=2)
 
-    # YOUR CODE HERE
+    # Apply k-ratio test
+    k_ratio = 0.75
+    good_matches_initial = []
+    for m, n in matches_1_to_2:
+        if m.distance < k_ratio * n.distance:
+            good_matches_initial.append(m)
+
+    # Re-match from image2 to image1 to apply the left-right check
+    matches_2_to_1 = bf.knnMatch(descriptors2, descriptors1, k=2)
+    good_matches_reverse = []
+    for m, n in matches_2_to_1:
+        if m.distance < k_ratio * n.distance:
+            good_matches_reverse.append(m)
+
+    # Create dictionaries to map matches by their indices for mutual check
+    initial_dict = {m.queryIdx: m.trainIdx for m in good_matches_initial}
+    reverse_dict = {m.queryIdx: m.trainIdx for m in good_matches_reverse}
+
+    # Apply left-right check: only keep matches that are consistent in both directions
+    good_matches = []
+    for m in good_matches_initial:
+        if reverse_dict.get(initial_dict.get(m.queryIdx)) == m.queryIdx:
+            good_matches.append(m)
+
+    # Return keypoints and filtered good matches
+    return kp1, kp2, good_matches
 
 
 def get_second_camera_position(kp1, kp2, matches, camera_matrix):
