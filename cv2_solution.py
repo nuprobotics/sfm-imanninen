@@ -18,7 +18,32 @@ def get_matches(image1, image2) -> typing.Tuple[
     bf = cv2.BFMatcher()
     matches_1_to_2: typing.Sequence[typing.Sequence[cv2.DMatch]] = bf.knnMatch(descriptors1, descriptors2, k=2)
 
-    # YOUR CODE HERE
+    # Apply k-ratio test
+    k_ratio = 0.75
+    good_matches_initial = []
+    for m, n in matches_1_to_2:
+        if m.distance < k_ratio * n.distance:
+            good_matches_initial.append(m)
+
+    # Re-match from image2 to image1 to apply the left-right check
+    matches_2_to_1 = bf.knnMatch(descriptors2, descriptors1, k=2)
+    good_matches_reverse = []
+    for m, n in matches_2_to_1:
+        if m.distance < k_ratio * n.distance:
+            good_matches_reverse.append(m)
+
+    # Create dictionaries to map matches by their indices for mutual check
+    initial_dict = {m.queryIdx: m.trainIdx for m in good_matches_initial}
+    reverse_dict = {m.queryIdx: m.trainIdx for m in good_matches_reverse}
+
+    # Apply left-right check: only keep matches that are consistent in both directions
+    good_matches = []
+    for m in good_matches_initial:
+        if reverse_dict.get(initial_dict.get(m.queryIdx)) == m.queryIdx:
+            good_matches.append(m)
+
+    # Return keypoints and filtered good matches
+    return kp1, kp2, good_matches
 
 
 def get_second_camera_position(kp1, kp2, matches, camera_matrix):
@@ -28,6 +53,14 @@ def get_second_camera_position(kp1, kp2, matches, camera_matrix):
     _, R, t, mask = cv2.recoverPose(E, coordinates1, coordinates2, camera_matrix)
     return R, t, E
 
+def compute_projection_matrix(K, R, t):
+    # Ensure t is a column vector
+    t = t.reshape(3, 1)
+    # Combine R and t into [R | t]
+    Rt = np.hstack((R, t))
+    # Compute projection matrix
+    P = K @ Rt
+    return P
 
 # Task 3
 def triangulation(
@@ -40,8 +73,45 @@ def triangulation(
         kp2: typing.Sequence[cv2.KeyPoint],
         matches: typing.Sequence[cv2.DMatch]
 ):
-    pass
-    # YOUR CODE HERE
+    P1 = compute_projection_matrix(camera_matrix, camera1_rotation_matrix, camera1_translation_vector)
+    P2 = compute_projection_matrix(camera_matrix, camera2_rotation_matrix, camera2_translation_vector)
+
+    # Prepare list to hold 3D points
+    points_in_3d = []
+
+    # Iterate over matches
+    for match in matches:
+        idx1 = match.queryIdx  # Index of the keypoint in kp1
+        idx2 = match.trainIdx  # Index of the keypoint in kp2
+
+        # Get the keypoints from both images
+        keypoint1 = kp1[idx1]
+        keypoint2 = kp2[idx2]
+
+        # Get the pixel coordinates from the keypoints
+        x1, y1 = keypoint1.pt
+        x2, y2 = keypoint2.pt
+
+        # Build the matrix A for the homogeneous equation system Ax = 0
+        A = np.array([
+            x1 * P1[2, :] - P1[0, :],
+            y1 * P1[2, :] - P1[1, :],
+            x2 * P2[2, :] - P2[0, :],
+            y2 * P2[2, :] - P2[1, :]
+        ])
+
+        # Perform Singular Value Decomposition (SVD) to solve for X
+        _, _, Vt = np.linalg.svd(A)
+        X = Vt[-1]  # The solution is the last row of V^T
+        X = X / X[3]  # Convert from homogeneous to Cartesian coordinates
+
+        # Append the 3D point to the list
+        points_in_3d.append(X[:3])
+
+    # Convert the list of points to a numpy array
+    points_in_3d = np.array(points_in_3d)
+
+    return points_in_3d
 
 
 # Task 4
@@ -57,8 +127,15 @@ def resection(
 
 
 def convert_to_world_frame(translation_vector, rotation_matrix):
-    pass
-    # YOUR CODE HERE
+    translation_vector = translation_vector.reshape(3, 1)
+
+    # Compute the camera position in the world frame (inverse transformation of the translation)
+    camera_position_in_world_frame = -rotation_matrix.T @ translation_vector
+
+    # The camera's rotation matrix in the world frame is simply the transpose of the given rotation matrix
+    camera_rotation_in_world_frame = rotation_matrix.T
+
+    return camera_position_in_world_frame, camera_rotation_in_world_frame
 
 
 def visualisation(
