@@ -53,6 +53,14 @@ def get_second_camera_position(kp1, kp2, matches, camera_matrix):
     _, R, t, mask = cv2.recoverPose(E, coordinates1, coordinates2, camera_matrix)
     return R, t, E
 
+def compute_projection_matrix(K, R, t):
+    # Ensure t is a column vector
+    t = t.reshape(3, 1)
+    # Combine R and t into [R | t]
+    Rt = np.hstack((R, t))
+    # Compute projection matrix
+    P = K @ Rt
+    return P
 
 # Task 3
 def triangulation(
@@ -65,8 +73,45 @@ def triangulation(
         kp2: typing.Sequence[cv2.KeyPoint],
         matches: typing.Sequence[cv2.DMatch]
 ):
-    pass
-    # YOUR CODE HERE
+    P1 = compute_projection_matrix(camera_matrix, camera1_rotation_matrix, camera1_translation_vector)
+    P2 = compute_projection_matrix(camera_matrix, camera2_rotation_matrix, camera2_translation_vector)
+
+    # Prepare list to hold 3D points
+    points_in_3d = []
+
+    # Iterate over matches
+    for match in matches:
+        idx1 = match.queryIdx  # Index of the keypoint in kp1
+        idx2 = match.trainIdx  # Index of the keypoint in kp2
+
+        # Get the keypoints from both images
+        keypoint1 = kp1[idx1]
+        keypoint2 = kp2[idx2]
+
+        # Get the pixel coordinates from the keypoints
+        x1, y1 = keypoint1.pt
+        x2, y2 = keypoint2.pt
+
+        # Build the matrix A for the homogeneous equation system Ax = 0
+        A = np.array([
+            x1 * P1[2, :] - P1[0, :],
+            y1 * P1[2, :] - P1[1, :],
+            x2 * P2[2, :] - P2[0, :],
+            y2 * P2[2, :] - P2[1, :]
+        ])
+
+        # Perform Singular Value Decomposition (SVD) to solve for X
+        _, _, Vt = np.linalg.svd(A)
+        X = Vt[-1]  # The solution is the last row of V^T
+        X = X / X[3]  # Convert from homogeneous to Cartesian coordinates
+
+        # Append the 3D point to the list
+        points_in_3d.append(X[:3])
+
+    # Convert the list of points to a numpy array
+    points_in_3d = np.array(points_in_3d)
+
+    return points_in_3d
 
 
 # Task 4
